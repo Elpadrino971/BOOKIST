@@ -138,6 +138,9 @@ STRIPE_PRO_PRICE_ID=price_...
 
 # App
 NEXT_PUBLIC_APP_URL=http://localhost:3000
+
+# Worker (optional, for production security)
+WORKER_SECRET=your_random_secret_string
 ```
 
 ### 7. Lancer le projet
@@ -193,12 +196,15 @@ Ouvrez [http://localhost:3000](http://localhost:3000)
 - [x] Sélection de modèles IA par tier
 - [x] Intégration Stripe (checkout + webhooks)
 - [x] Page subscription
+- [x] **Jobs asynchrones** (génération en arrière-plan) ⭐
+- [x] **Rate limiting** (max 5 générations/heure) ⭐
+- [x] **Retry avec exponential backoff** ⭐
+- [x] **Monitoring & logging** (coûts, durée, erreurs) ⭐
+- [x] **Suivi de progression en temps réel** ⭐
 
 ### 🚧 À implémenter (optionnel)
 
 - [ ] Export EPUB/PDF
-- [ ] Jobs asynchrones (génération en arrière-plan)
-- [ ] Suivi de progression en temps réel
 - [ ] Système de cache IA (réduction coûts)
 - [ ] Embeddings pour cohérence narrative (pgvector)
 - [ ] Mode sombre
@@ -243,6 +249,104 @@ npm run lint     # Linter
 5. **Générer Tome 2** → L'IA utilise le récap du tome 1
 6. **Limite atteinte** → Upgrade vers plan payant
 7. **Continuer la saga** → Tomes illimités (selon plan)
+
+---
+
+## 🚀 **Nouvelles Fonctionnalités Critiques (Production-Ready)**
+
+### ⚡ Jobs Asynchrones
+
+La génération de tomes se fait maintenant **en arrière-plan** :
+
+1. L'utilisateur clique sur "Générer le tome 2"
+2. Un **job** est créé instantanément
+3. L'utilisateur peut **fermer la page** ou naviguer ailleurs
+4. Le worker traite le job en arrière-plan (2-3 min)
+5. **Redirection automatique** quand c'est prêt
+
+**Architecture** :
+- Table `generation_jobs` pour stocker les jobs
+- Worker API route `/api/worker/process-job`
+- Polling toutes les 2 secondes côté frontend
+- Sauvegarde progressive (chaque chapitre sauvegardé immédiatement)
+
+**Avantages** :
+- ✅ Pas de timeout frontend
+- ✅ Meilleure UX (pas de spinner bloquant)
+- ✅ Robuste face aux erreurs réseau
+
+### 🛡️ Rate Limiting
+
+Protection contre les abus : **max 5 générations par heure** par utilisateur.
+
+**Implémentation** :
+- Vérification dans `canUserGenerate()`
+- Compte les jobs des 60 dernières minutes
+- Retourne une erreur 429 avec `resetAt` si limite atteinte
+
+**Pourquoi** : Évite qu'un utilisateur malveillant génère 100 tomes → facture OpenAI explosive
+
+### 🔄 Retry avec Exponential Backoff
+
+Toutes les appels IA ont maintenant un **système de retry automatique** :
+
+```typescript
+withRetryAndTimeout(
+  () => generateChapter(...),
+  {
+    maxRetries: 3,        // 3 tentatives max
+    timeout: 90000,       // 90 secondes timeout
+    initialDelay: 1000,   // 1s, puis 2s, puis 4s
+  }
+)
+```
+
+**Avantages** :
+- ✅ Résiste aux timeouts OpenAI/Anthropic
+- ✅ Pas de perte de données (chaque chapitre sauvegardé avant de continuer)
+- ✅ Logs automatiques des erreurs
+
+### 📊 Monitoring & Logging
+
+Nouvelle table `generation_logs` qui track :
+- Modèle IA utilisé
+- Tokens consommés
+- **Coût estimé** ($$$)
+- Durée de génération
+- Success/failure
+
+**Utilité** :
+- Surveiller les coûts réels
+- Détecter les problèmes (taux d'échec)
+- Optimiser les prompts
+
+**Accès** : Query SQL pour voir les stats
+```sql
+SELECT
+  DATE(created_at) as date,
+  model_used,
+  SUM(cost_usd) as total_cost,
+  COUNT(*) as generations,
+  AVG(duration_ms) as avg_duration
+FROM generation_logs
+WHERE created_at > NOW() - INTERVAL '7 days'
+GROUP BY date, model_used
+ORDER BY date DESC;
+```
+
+### 📈 Suivi de Progression en Temps Réel
+
+L'utilisateur voit la progression de la génération :
+
+```
+Génération en cours...
+⏳ Generating chapter 2  [████████░░░░░░░] 60%
+```
+
+**Implémentation** :
+- `updateJobProgress(jobId, 60, 'Generating chapter 2')`
+- Frontend poll toutes les 2s pour mettre à jour la UI
+- Smooth UX
 
 ---
 

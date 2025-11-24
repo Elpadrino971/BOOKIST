@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import { ArrowLeft, BookOpen, Plus, Loader2 } from 'lucide-react'
-import GenerateTomeButton from '@/components/novels/GenerateTomeButton'
+import GenerateTomeButtonAsync from '@/components/novels/GenerateTomeButtonAsync'
 
 export default async function NovelDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -126,7 +126,7 @@ export default async function NovelDetailPage({ params }: { params: Promise<{ id
         {/* Action Section */}
         <div className="mb-8">
           {canGenerate ? (
-            <GenerateTomeButton
+            <GenerateTomeButtonAsync
               novelId={novel.id}
               nextTomeNumber={tomes.length + 1}
             />
